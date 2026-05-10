@@ -1,0 +1,741 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<link rel="icon" type="image/png" href="/favicon.png">
+<title>SafeTrace — One Tap Emergency Locator</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<!-- Google Identity Services — set your Client ID below -->
+<meta name="google-client-id" content="33171331675-sthloeba3ulm1m4785sea3tvmev4v6l2.apps.googleusercontent.com">
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<script>
+// Suppress Google One Tap automatically on watch/track pages
+// This runs after GSI library finishes loading
+window.onGoogleLibraryLoad = function() {
+  const path = window.location.pathname;
+  if (path.includes('/track/') || path.includes('/watch/')) {
+    google.accounts.id.cancel();
+  }
+};
+</script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#05080f;color:#e2e8f0;font-family:'Inter',system-ui,sans-serif;overflow-x:hidden}
+.ambient{position:fixed;inset:0;pointer-events:none;z-index:0;background:radial-gradient(ellipse 70% 50% at 0% 0%,rgba(255,71,87,0.08) 0%,transparent 55%),radial-gradient(ellipse 50% 40% at 100% 100%,rgba(71,120,255,0.05) 0%,transparent 55%)}
+.page{display:none;min-height:100vh;position:relative;z-index:2}
+.page.active{display:flex;flex-direction:column}
+.container{max-width:560px;margin:0 auto;padding:24px 20px;width:100%}
+.wide-container{max-width:1100px;margin:0 auto;padding:20px}
+.glass-card{background:rgba(12,16,28,0.85);backdrop-filter:blur(14px);border:1px solid rgba(255,255,255,0.08);border-radius:32px;padding:24px 22px;box-shadow:0 20px 35px -12px rgba(0,0,0,0.6)}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:12px;border:none;border-radius:60px;font-weight:700;font-size:18px;padding:16px 24px;width:100%;cursor:pointer;transition:transform 0.2s}
+.btn-red{background:linear-gradient(105deg,#ff3b5c,#e31e42);color:white;box-shadow:0 10px 20px -5px rgba(255,59,92,0.4)}
+.btn-red:active{transform:scale(0.97)}
+.btn-outline{background:transparent;border:1.5px solid rgba(255,255,255,0.2);color:#e2e8f0}
+.input{width:100%;padding:14px 18px;border-radius:60px;background:#0c1122;border:1px solid #2a314a;color:white;font-size:16px;outline:none}
+.input:focus{border-color:#ff3b5c}
+.dur-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.dur-btn{background:#101624;border:1px solid #2a314a;color:#ccd6f6;padding:10px 0;border-radius:40px;font-weight:600;cursor:pointer}
+.dur-btn.active{background:#ff3b5c;border-color:#ff3b5c;color:white}
+.status-pill{display:inline-flex;align-items:center;gap:8px;background:#1a1f2e;padding:6px 14px;border-radius:40px;font-size:12px;font-family:monospace}
+.pulse-dot{width:10px;height:10px;background:#00e3a5;border-radius:50%;animation:pulse-green 1.8s infinite}
+@keyframes pulse-green{0%{box-shadow:0 0 0 0 rgba(0,227,165,0.6)}70%{box-shadow:0 0 0 10px transparent}100%{box-shadow:0 0 0 0 transparent}}
+.map-card{height:380px;border-radius:28px;overflow:hidden;background:#030812;border:1px solid rgba(255,255,255,0.08);position:relative}
+#emergency-map{height:100%;width:100%}
+.map-placeholder{position:absolute;inset:0;background:rgba(3,8,18,0.92);backdrop-filter:blur(6px);display:flex;flex-direction:column;align-items:center;justify-content:center;border-radius:28px;z-index:5}
+.map-coords-badge{position:absolute;bottom:12px;left:12px;background:#0a0f1cd9;backdrop-filter:blur(8px);border-radius:18px;padding:6px 14px;font-size:11px;font-family:monospace;z-index:10}
+.stat-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin:20px 0}
+.stat-tile{background:rgba(15,20,40,0.7);border-radius:24px;padding:12px 16px;border:1px solid rgba(255,255,255,0.05)}
+.stat-label{font-size:11px;text-transform:uppercase;letter-spacing:1.2px;color:#8a99b4;margin-bottom:4px}
+.stat-value{font-size:24px;font-weight:800;font-family:monospace}
+.pulse-red{width:48px;height:48px;background:#ff3b5c;border-radius:50%;margin:0 auto 16px;animation:pulse-red 1.5s infinite}
+@keyframes pulse-red{0%{transform:scale(0.95);box-shadow:0 0 0 0 rgba(255,59,92,0.7)}70%{transform:scale(1.05);box-shadow:0 0 0 15px rgba(255,59,92,0)}100%{transform:scale(0.95)}}
+#toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#0f1422ee;backdrop-filter:blur(12px);border-radius:60px;padding:12px 24px;font-size:14px;z-index:999;opacity:0;transition:opacity 0.2s;white-space:nowrap;pointer-events:none}
+#toast.show{opacity:1}
+.alert-feed{font-size:12px;margin-top:12px;max-height:140px;overflow-y:auto;font-family:monospace}
+.flex-row{display:flex;gap:12px;flex-wrap:wrap;align-items:center}
+.child-stats-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin:20px 0}
+.child-stat-card{background:rgba(255,255,255,0.05);border-radius:16px;padding:10px;text-align:center}
+.child-stat-value{font-size:20px;font-weight:700;font-family:monospace;color:#ff3b5c}
+.hidden{display:none}
+/* ── Login page ── */
+.google-btn{display:flex;align-items:center;justify-content:center;gap:12px;background:#fff;color:#1f1f1f;border:none;border-radius:60px;font-size:16px;font-weight:600;padding:14px 28px;width:100%;cursor:pointer;box-shadow:0 4px 16px rgba(0,0,0,0.4);transition:transform 0.15s,box-shadow 0.15s}
+.google-btn:hover{transform:translateY(-1px);box-shadow:0 8px 24px rgba(0,0,0,0.5)}
+.google-btn:active{transform:scale(0.98)}
+.user-chip{display:flex;align-items:center;gap:10px;background:#0f1422;border-radius:60px;padding:6px 14px 6px 6px;border:1px solid rgba(255,255,255,0.1)}
+.user-chip img{width:30px;height:30px;border-radius:50%;object-fit:cover}
+.feature-list{list-style:none;display:flex;flex-direction:column;gap:10px;margin:16px 0}
+.feature-list li{display:flex;align-items:center;gap:10px;font-size:14px;color:#a0b0cf}
+.feature-list li span.icon{font-size:18px}
+</style>
+</head>
+<body>
+<div class="ambient"></div>
+
+<!-- PAGE 0: GOOGLE LOGIN -->
+<div id="page-login" class="page active">
+  <div class="container" style="display:flex;flex-direction:column;gap:28px;justify-content:center;min-height:100vh">
+    <div style="text-align:center">
+      <div style="background:#ff3b5c;width:72px;height:72px;border-radius:36px;display:flex;align-items:center;justify-content:center;font-size:40px;margin:0 auto 16px">🛡️</div>
+      <div style="font-weight:800;font-size:36px;margin-bottom:6px">Safe<span style="color:#ff3b5c">Trace</span></div>
+      <div style="color:#8a99b4;font-size:14px">Real-time family location sharing</div>
+    </div>
+    <div class="glass-card" style="text-align:center">
+      <ul class="feature-list">
+        <li><span class="icon">📍</span> One-tap location sharing — no app needed</li>
+        <li><span class="icon">🛰️</span> Live satellite map with real-time tracking</li>
+        <li><span class="icon">⚡</span> Location received in under 2 seconds</li>
+        <li><span class="icon">🔒</span> Private — only your family sees your location</li>
+      </ul>
+      <div style="border-top:1px solid rgba(255,255,255,0.07);margin:20px 0"></div>
+      <p style="font-size:13px;color:#8a99b4;margin-bottom:20px">Sign in to create tracking sessions and view your history.</p>
+      <button class="google-btn" onclick="startGoogleSignIn()">
+        <svg width="20" height="20" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.18 1.48-4.97 2.35-8.16 2.35-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
+        Continue with Google
+      </button>
+      <div id="login-error" style="color:#ff3b5c;font-size:12px;margin-top:12px;display:none"></div>
+      <!-- Google fallback button (shown only if One Tap is blocked by browser) -->
+      <div id="google-btn-fallback" style="display:none;position:absolute;opacity:0;pointer-events:none"></div>
+    </div>
+    <div style="text-align:center;font-size:12px;color:#4a5568">Developed by S Anil Kumar</div>
+  </div>
+</div>
+
+<!-- PAGE 1: PARENT -->
+<div id="page-parent" class="page">
+  <div class="container" style="display:flex;flex-direction:column;gap:24px">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
+      <div style="display:flex;align-items:center;gap:12px">
+        <div style="background:#ff3b5c;width:44px;height:44px;border-radius:24px;display:flex;align-items:center;justify-content:center;font-size:26px">🛡️</div>
+        <div><div style="font-weight:800;font-size:28px">Safe<span style="color:#ff3b5c">Trace</span></div><div style="font-size:11px;opacity:0.7">emergency · one tap locator</div></div>
+      </div>
+      <div id="user-chip" class="user-chip" style="cursor:pointer" onclick="showLogoutMenu()">
+        <img id="user-avatar" src="" alt="" style="display:none">
+        <div style="font-size:13px;font-weight:600" id="user-chip-name">—</div>
+      </div>
+    </div>
+    <div class="glass-card">
+      <div style="font-size:13px;color:#ff3b5c;font-weight:700">⚡ EMERGENCY MODE</div>
+      <div style="font-size:28px;font-weight:800;margin:6px 0 4px">Instant location link</div>
+      <p style="color:#a0b0cf;font-size:15px;margin-bottom:22px">Child taps the link → live location starts immediately.</p>
+      <div class="stat-label" style="margin-bottom:6px">YOUR NAME</div>
+      <input id="parent-name" class="input" placeholder="Your name" style="margin-bottom:8px" value="">
+      <div id="parent-session-count" style="font-size:12px;color:#8a99b4;margin-bottom:20px;padding-left:8px">0 sessions created</div>
+      <div class="stat-label" style="margin-bottom:6px">SESSION DURATION</div>
+      <div class="dur-grid" style="margin-bottom:24px">
+        <button class="dur-btn" onclick="setDuration(30,this)">30min</button>
+        <button class="dur-btn active" onclick="setDuration(120,this)">2h</button>
+        <button class="dur-btn" onclick="setDuration(240,this)">4h</button>
+      </div>
+      <button class="btn btn-red" onclick="createEmergencySession()">🔗 Generate ONE-TAP Link →</button>
+      <div id="parent-error" style="color:#ff3b5c;font-size:12px;margin-top:12px;display:none"></div>
+    </div>
+      <div class="dev-credit" style="text-align: center;">
+    <span>Developed by S Anil Kumar</span>
+</div>
+  </div>
+</div>
+
+<!-- PAGE 2: WATCHER (Parent sees map) -->
+<div id="page-watcher" class="page">
+  <div class="wide-container">
+    <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:20px">
+      <div><div style="font-weight:800;font-size:20px">🛡️ SafeTrace</div><div style="font-size:12px">Watching: <strong id="watcher-child-name" style="color:#ff3b5c">—</strong></div></div>
+      <div class="flex-row">
+        <span class="status-pill" id="watcher-status"><span class="pulse-dot"></span> LIVE</span>
+        <span id="watcher-countdown" style="background:#0f1422;padding:6px 15px;border-radius:40px;font-size:13px">--:--</span>
+        <button class="btn-outline" style="padding:6px 15px" onclick="copyLink()">📎 Copy link</button>
+        <button class="btn-outline" style="padding:6px 15px;color:#00e3a5" onclick="extendSession(30)">⏱ +30min</button>
+        <button class="btn-outline" style="padding:6px 15px;color:#ff3b5c" onclick="endSession()">🔴 End</button>
+      </div>
+    </div>
+    <div id="share-banner" style="background:#ff3b5c10;border:1px solid #ff3b5c30;border-radius:32px;padding:14px 20px;margin-bottom:18px;display:flex;justify-content:space-between;flex-wrap:wrap">
+      <div><span style="font-weight:700">📲 Emergency link (one tap for child)</span><br/><span id="share-link-display" style="font-size:12px;font-family:monospace;color:#ffa3b5"></span></div>
+      <button class="btn-outline" style="width:auto;padding:8px 20px" onclick="copyLink()">Copy</button>
+    </div>
+    <div class="map-card">
+      <div id="emergency-map"></div>
+      <div id="map-placeholder" class="map-placeholder">
+        <div style="font-size:48px;margin-bottom:12px">📍⏳</div>
+        <p>Waiting for child's location...</p>
+        <p style="font-size:12px">They just need to tap the link once</p>
+      </div>
+      <div id="map-coords-info" class="map-coords-badge" style="display:none"></div>
+    </div>
+    <!-- Address field -->
+    <div style="margin:16px 0 4px">
+      <div class="stat-label" style="margin-bottom:6px">📍 ADDRESS</div>
+      <div style="position:relative">
+        <input id="parent-address" readonly value="Waiting for location..." 
+          style="width:100%;padding:13px 50px 13px 18px;border-radius:60px;background:#0c1122;border:1px solid #2a314a;color:#e2e8f0;font-size:13px;font-family:monospace;cursor:text;outline:none">
+        <button onclick="copyAddress()" title="Copy address"
+          style="position:absolute;right:10px;top:50%;transform:translateY(-50%);background:#1a2040;border:none;border-radius:40px;color:#a0b0cf;cursor:pointer;padding:5px 10px;font-size:13px">
+          📋
+        </button>
+      </div>
+    </div>
+    <div class="stat-grid">
+      <div class="stat-tile"><div class="stat-label">LATITUDE</div><div class="stat-value" id="parent-lat">—</div></div>
+      <div class="stat-tile"><div class="stat-label">LONGITUDE</div><div class="stat-value" id="parent-lng">—</div></div>
+      <div class="stat-tile"><div class="stat-label">ACCURACY</div><div class="stat-value" id="parent-acc">—</div></div>
+      <div class="stat-tile"><div class="stat-label">SPEED</div><div class="stat-value" id="parent-speed">—</div></div>
+    </div>
+    <div class="glass-card" style="padding:16px"><span>📋 Activity</span><div id="alert-feed" class="alert-feed">Ready — waiting for child.</div></div>
+  </div>
+</div>
+
+<!-- PAGE 3: CHILD ONE-TAP (SILENT - NO ALERTS) -->
+<div id="page-child-one-tap" class="page">
+  <div style="min-height:100vh;display:flex;justify-content:center;align-items:center;padding:20px">
+    <div class="glass-card" style="width:100%;max-width:500px;text-align:center">
+      <div style="font-size:70px;margin-bottom:16px">🆘</div>
+      <div style="font-size:32px;font-weight:800;margin-bottom:8px">You're safe</div>
+      <p style="color:#cbd5ff;font-size:18px;margin-bottom:28px">Your family will see your location.</p>
+      <button id="emergency-start-btn" class="btn btn-red" style="font-size:24px;padding:18px">📍 I'M HERE</button>
+      <p style="margin-top:28px;font-size:12px;opacity:0.6">🔒 Only your parent can see this</p>
+    </div>
+  </div>
+</div>
+
+<!-- PAGE 4: CHILD ACTIVE SHARING (SILENT) -->
+<div id="page-child-active" class="page">
+  <div style="min-height:100vh;display:flex;justify-content:center;align-items:center;padding:20px">
+    <div class="glass-card" style="width:100%;max-width:500px;text-align:center">
+      <div class="pulse-red"></div>
+      <div style="font-size:28px;font-weight:800;color:#00e3a5">SHARING</div>
+      <p><strong id="child-watcher-name" style="color:#ffb3c0">Parent</strong> can see your location.</p>
+      <div class="child-stats-grid">
+        <div class="child-stat-card"><div class="stat-label">SPEED</div><div class="child-stat-value" id="child-speed">—</div></div>
+        <div class="child-stat-card"><div class="stat-label">ACCURACY</div><div class="child-stat-value" id="child-acc">—</div></div>
+        <div class="child-stat-card"><div class="stat-label">HEADING</div><div class="child-stat-value" id="child-heading">—</div></div>
+        <div class="child-stat-card"><div class="stat-label">UPDATES</div><div class="child-stat-value" id="child-updates">0</div></div>
+      </div>
+      <div style="font-family:monospace;font-size:11px;margin-bottom:20px" id="child-coords">—</div>
+      <button class="btn-outline" onclick="stopSharing()">Stop</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+// SILENT MODE - No alert messages, just works
+let state = { token: null, parentName: 'Anil', duration: 120, shareUrl: null, expiresAt: null, map: null, marker: null, circle: null, polyline: null, trail: [], eventSource: null, geoWatchId: null, geoIntervalId: null, updateCount: 0, startTime: null };
+
+function showToast(msg) { 
+  let t = document.getElementById('toast'); 
+  t.textContent = msg; 
+  t.classList.add('show'); 
+  setTimeout(() => t.classList.remove('show'), 2000); 
+}
+
+function setDuration(min, btn) { 
+  state.duration = min; 
+  document.querySelectorAll('.dur-btn').forEach(b => b.classList.remove('active')); 
+  btn.classList.add('active'); 
+}
+
+async function _createEmergencySession() {
+  let name = document.getElementById('parent-name').value.trim() || 'User';
+  const btn = document.querySelector('#page-parent .btn-red');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Creating...'; }
+  try {
+    const { token: authToken } = getStoredAuth();
+    const headers = { 'Content-Type': 'application/json' };
+    if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
+    const res = await fetch('/api/emergency/create', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ watcher_name: name, duration_minutes: state.duration })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+    state.token = data.token;
+    state.shareUrl = data.track_url;
+    state.expiresAt = data.expires_at;
+    // Update session count in UI
+    const { user } = getStoredAuth();
+    if (user) {
+      user.session_count = (user.session_count || 0) + 1;
+      storeAuth(authToken, user);
+      const countEl = document.getElementById('parent-session-count');
+      if (countEl) countEl.textContent = `${user.session_count} session${user.session_count !== 1 ? 's' : ''} created`;
+    }
+    window.history.pushState({}, '', `/watch/${data.token}`);
+    document.getElementById('page-parent').classList.remove('active');
+    document.getElementById('page-watcher').classList.add('active');
+    initWatcher();
+  } catch(e) {
+    let errDiv = document.getElementById('parent-error');
+    errDiv.innerText = 'Failed. Please try again.';
+    errDiv.style.display = 'block';
+    setTimeout(() => errDiv.style.display = 'none', 3000);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '🔗 Generate ONE-TAP Link →'; }
+  }
+}
+
+function initWatcher() {
+  document.getElementById('share-link-display').innerText = state.shareUrl;
+  startSSE();
+  startCountdown();
+  initMap();
+}
+
+function startSSE() {
+  if (state.eventSource) state.eventSource.close();
+  state.eventSource = new EventSource(`/api/emergency/stream/${state.token}`);
+  state.eventSource.addEventListener('init', e => { 
+    const d = JSON.parse(e.data); 
+    if(d.sharer?.latest) updateMap(d.sharer.latest); 
+  });
+  state.eventSource.addEventListener('location_update', e => { 
+    const d = JSON.parse(e.data); 
+    updateMap(d); 
+    document.getElementById('map-placeholder').style.display = 'none'; 
+  });
+  state.eventSource.addEventListener('sharer_active', e => { 
+    const d = JSON.parse(e.data); 
+    document.getElementById('watcher-child-name').innerHTML = d.name; 
+  });
+  state.eventSource.addEventListener('session_ended', () => { 
+    if(state.eventSource) state.eventSource.close(); 
+  });
+  state.eventSource.addEventListener('session_extended', e => {
+    const d = JSON.parse(e.data);
+    state.expiresAt = d.expires_at;
+    showToast(`⏱ Session extended +${d.extra_minutes}min`);
+  });
+}
+
+function updateMap(loc) {
+  if (!state.map) initMap();
+  const { lat, lng, accuracy } = loc;
+  if (!state.marker) {
+    const icon = L.divIcon({ html: `<div style="width:28px;height:28px;background:#ff3b5c;border-radius:50%;border:3px solid white;box-shadow:0 0 0 5px #ff3b5c80;"></div>`, iconSize: [28,28] });
+    state.marker = L.marker([lat, lng], { icon }).addTo(state.map);
+    state.circle = L.circle([lat, lng], { radius: accuracy || 15, color: '#ff3b5c', weight: 1, fillOpacity: 0.15 }).addTo(state.map);
+    state.polyline = L.polyline([], { color: '#ff3b5c', weight: 3 }).addTo(state.map);
+    state.map.setView([lat, lng], 16);
+  } else {
+    state.marker.setLatLng([lat, lng]);
+    state.circle.setLatLng([lat, lng]).setRadius(accuracy || 15);
+    state.trail.push([lat, lng]);
+    if (state.trail.length > 300) state.trail.splice(0, state.trail.length - 300);
+    state.polyline.setLatLngs(state.trail);
+  }
+  document.getElementById('parent-lat').innerHTML = lat.toFixed(6);
+  document.getElementById('parent-lng').innerHTML = lng.toFixed(6);
+  document.getElementById('parent-acc').innerHTML = accuracy ? `±${accuracy.toFixed(0)}m` : '—';
+  document.getElementById('parent-speed').innerHTML = loc.speed != null ? (loc.speed*3.6).toFixed(1)+'km/h' : (loc.derived_speed != null ? (loc.derived_speed*3.6).toFixed(1)+'km/h' : '—');
+  document.getElementById('map-coords-info').style.display = 'block';
+  document.getElementById('map-coords-info').innerHTML = `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+  reverseGeocode(lat, lng);
+}
+
+function initMap() {
+  if (state.map) return;
+  state.map = L.map('emergency-map').setView([20, 0], 2);
+  L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19, attribution: '© Esri' }).addTo(state.map);
+  L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19, opacity: 0.8 }).addTo(state.map);
+}
+
+function startCountdown() {
+  if (state.countdownInterval) clearInterval(state.countdownInterval);
+  state.countdownInterval = setInterval(() => {
+    if (!state.expiresAt) return;
+    const diff = state.expiresAt * 1000 - Date.now();
+    if (diff <= 0) { 
+      document.getElementById('watcher-countdown').innerHTML = 'Expired'; 
+      clearInterval(state.countdownInterval); 
+      return; 
+    }
+    const m = Math.floor(diff / 60000), s = Math.floor((diff % 60000) / 1000);
+    document.getElementById('watcher-countdown').innerHTML = `${m}:${s < 10 ? '0' + s : s}`;
+  }, 1000);
+}
+
+function copyAddress() { 
+  const addr = document.getElementById('parent-address').value;
+  if (!addr || addr === 'Waiting for location...' || addr === 'Fetching address...') {
+    showToast('⏳ Address not ready yet'); return;
+  }
+  if (navigator.clipboard && window.isSecureContext) {
+    navigator.clipboard.writeText(addr).then(() => showToast('✅ Address copied!')).catch(() => fallbackCopy(addr));
+  } else {
+    fallbackCopy(addr);
+  }
+}
+
+async function extendSession(minutes) {
+  try {
+    const res = await fetch(`/api/emergency/extend/${state.token}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ extra_minutes: minutes })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+    state.expiresAt = data.expires_at;
+    showToast(`✅ Session extended by ${minutes} minutes`);
+  } catch(e) {
+    showToast('❌ Could not extend session');
+  }
+}
+
+let _geocodeTimer = null;
+async function reverseGeocode(lat, lng) {
+  if (_geocodeTimer) clearTimeout(_geocodeTimer);
+  _geocodeTimer = setTimeout(async () => {
+    try {
+      document.getElementById('parent-address').value = 'Fetching address...';
+      const res = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json`, {
+        headers: { 'Accept-Language': 'en' }
+      });
+      const data = await res.json();
+      const addr = data.display_name || `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+      document.getElementById('parent-address').value = addr;
+    } catch(e) {
+      document.getElementById('parent-address').value = `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+    }
+  }, 2000); // debounce — only geocode after 2s of no updates
+}
+
+function copyLink() {
+  const url = state.shareUrl;
+  if (!url) { showToast('❌ No link yet'); return; }
+  if (navigator.clipboard && window.isSecureContext) {
+    navigator.clipboard.writeText(url).then(() => showToast('✅ Link copied!')).catch(() => fallbackCopy(url));
+  } else {
+    fallbackCopy(url);
+  }
+}
+
+function fallbackCopy(text) {
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.cssText = 'position:fixed;left:-9999px;top:-9999px;opacity:0';
+  document.body.appendChild(ta);
+  ta.focus(); ta.select();
+  try {
+    document.execCommand('copy');
+    showToast('✅ Link copied!');
+  } catch(e) {
+    // Last resort: show the URL so user can copy manually
+    prompt('Copy this link:', text);
+  }
+  document.body.removeChild(ta);
+}
+
+async function endSession() { 
+  if (!confirm('End tracking?')) return; 
+  await fetch(`/api/emergency/end/${state.token}`, { method: 'DELETE' }); 
+  if(state.eventSource) state.eventSource.close(); 
+  showToast('Session ended'); 
+  setTimeout(() => window.location.href = '/', 1000); 
+}
+
+// CHILD FLOW — zero delay, single round-trip activate, throttled sends
+function initChild() {
+  const match = window.location.pathname.match(/\/track\/([A-Za-z0-9_-]+)/);
+  if (!match) return;
+  state.token = match[1];
+
+  // Show button IMMEDIATELY — don't await status fetch
+  document.getElementById('page-parent')?.classList.remove('active');
+  document.getElementById('page-watcher')?.classList.remove('active');
+  document.getElementById('page-child-one-tap').classList.add('active');
+
+  // Fetch parent name in background — updates UI if it arrives, no blocking
+  fetch(`/api/emergency/status/${state.token}`)
+    .then(r => r.json())
+    .then(d => { if(d.watcher_name) document.getElementById('child-watcher-name').innerText = d.watcher_name; })
+    .catch(() => {});
+
+  document.getElementById('emergency-start-btn').onclick = () => {
+    const btn = document.getElementById('emergency-start-btn');
+    btn.disabled = true;
+    btn.innerHTML = '📡 Allow location above...';
+
+    let firstFix = false;
+
+    if (state.geoWatchId) navigator.geolocation.clearWatch(state.geoWatchId);
+    state.geoWatchId = navigator.geolocation.watchPosition(
+      (pos) => {
+        if (!firstFix) {
+          firstFix = true;
+
+          // Switch screen instantly on first GPS fix
+          document.getElementById('page-child-one-tap').classList.remove('active');
+          document.getElementById('page-child-active').classList.add('active');
+
+          // ONE round-trip activate (join+consent combined) — fire and forget
+          fetch(`/api/emergency/activate/${state.token}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ sharer_name: 'Child' }),
+            keepalive: true   // completes even if page navigates
+          }).catch(() => {});
+        }
+        sendChildLocation(pos);
+      },
+      (err) => {
+        btn.disabled = false;
+        btn.innerHTML = err.code === 1 ? '🔒 Location blocked — check browser settings' : "📍 I'M HERE";
+      },
+      // maximumAge:5000 — accept a cached fix up to 5s old for instant first result
+      // If device has recent GPS data it fires in <100ms instead of waiting for fresh fix
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 5000 }
+    );
+  };
+}
+
+// Throttled location sender — max 1 POST in flight at a time per user
+// Prevents fetch pile-up at 1000 users all sending simultaneously
+let _locSending = false;
+let _locPending = null;
+
+function sendChildLocation(pos) {
+  const { latitude: lat, longitude: lng, accuracy, speed, heading, altitude } = pos.coords;
+  state.updateCount++;
+
+  // Update child UI immediately — never waits for network
+  document.getElementById('child-speed').innerHTML   = speed != null ? (speed*3.6).toFixed(1)+'km/h' : '—';
+  document.getElementById('child-acc').innerHTML     = accuracy ? `±${accuracy.toFixed(0)}m` : '—';
+  document.getElementById('child-heading').innerHTML = heading != null ? `${heading.toFixed(0)}°` : '—';
+  document.getElementById('child-updates').innerHTML = state.updateCount;
+  document.getElementById('child-coords').innerHTML  = `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+
+  const payload = JSON.stringify({ lat, lng,
+    accuracy: accuracy ?? null, speed: speed ?? null,
+    heading: heading ?? null, altitude: altitude ?? null });
+
+  if (_locSending) {
+    // Previous send still in flight — queue this one, drop any older pending
+    _locPending = payload;
+    return;
+  }
+
+  function doSend(body) {
+    _locSending = true;
+    fetch(`/api/emergency/location/${state.token}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body,
+      keepalive: true
+    }).catch(() => {}).finally(() => {
+      _locSending = false;
+      if (_locPending) {
+        const next = _locPending;
+        _locPending = null;
+        doSend(next);  // send the most recent queued fix
+      }
+    });
+  }
+
+  doSend(payload);
+}
+
+async function stopSharing() {
+  if (state.geoWatchId) navigator.geolocation.clearWatch(state.geoWatchId);
+  state.geoWatchId = null;
+  await fetch(`/api/emergency/leave/${state.token}`, { method: 'DELETE' });
+  showToast('✅ Stopped sharing');
+  setTimeout(() => window.location.href = '/', 1500);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// AUTH  — Google Identity Services
+// ─────────────────────────────────────────────────────────────────────────────
+const AUTH_KEY  = 'safetrace_auth_token';
+const USER_KEY  = 'safetrace_user';
+
+function getStoredAuth() {
+  try {
+    const token = localStorage.getItem(AUTH_KEY);
+    const user  = JSON.parse(localStorage.getItem(USER_KEY) || 'null');
+    return { token, user };
+  } catch { return { token: null, user: null }; }
+}
+
+function storeAuth(token, user) {
+  localStorage.setItem(AUTH_KEY, token);
+  localStorage.setItem(USER_KEY, JSON.stringify(user));
+}
+
+function clearAuth() {
+  localStorage.removeItem(AUTH_KEY);
+  localStorage.removeItem(USER_KEY);
+}
+
+function applyUserToUI(user) {
+  if (!user) return;
+  // Parent page name input + session count
+  const nameEl = document.getElementById('parent-name');
+  if (nameEl) nameEl.value = user.name || '';
+  const countEl = document.getElementById('parent-session-count');
+  if (countEl) countEl.textContent = `${user.session_count || 0} session${user.session_count !== 1 ? 's' : ''} created`;
+  // User chip in header
+  const chipName = document.getElementById('user-chip-name');
+  if (chipName) chipName.textContent = (user.name || '').split(' ')[0];
+  const avatar = document.getElementById('user-avatar');
+  if (avatar && user.picture) {
+    avatar.src = user.picture;
+    avatar.style.display = 'block';
+  }
+}
+
+// Public entry point called by the Generate button — injects auth token then delegates
+async function createEmergencySession() {
+  await _createEmergencySession();
+}
+
+function startGoogleSignIn() {
+  const clientId = document.querySelector('meta[name="google-client-id"]')?.content;
+  if (!clientId || clientId.includes('YOUR_GOOGLE')) {
+    showToast('⚠️ Dev mode: set GOOGLE_CLIENT_ID to enable login');
+    setTimeout(() => switchToParentPage({ name: 'User', email: '', picture: '', session_count: 0 }), 800);
+    return;
+  }
+  if (typeof google === 'undefined') {
+    document.getElementById('login-error').style.display = 'block';
+    document.getElementById('login-error').textContent = 'Google Sign-In failed to load. Check your internet connection.';
+    return;
+  }
+  google.accounts.id.initialize({
+    client_id: clientId,
+    callback: handleGoogleCredential,
+    auto_select: false,
+    cancel_on_tap_outside: true,
+  });
+  // Render button into a hidden container and programmatically click it
+  // This gives ONE clean popup with no One Tap overlay
+  const container = document.getElementById('google-btn-fallback');
+  google.accounts.id.renderButton(container, { theme: 'outline', size: 'large', width: 1 });
+  container.querySelector('div[role="button"]')?.click();
+}
+
+async function handleGoogleCredential(response) {
+  try {
+    const res  = await fetch('/api/auth/google', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id_token: response.credential }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Auth failed');
+    storeAuth(data.auth_token, data.user);
+    switchToParentPage(data.user);
+  } catch(e) {
+    const errEl = document.getElementById('login-error');
+    errEl.textContent = '❌ Sign-in failed: ' + e.message;
+    errEl.style.display = 'block';
+  }
+}
+
+function switchToParentPage(user) {
+  applyUserToUI(user);
+  document.getElementById('page-login').classList.remove('active');
+  document.getElementById('page-parent').classList.remove('active');
+  document.getElementById('page-parent').classList.add('active');
+}
+
+function showLogoutMenu() {
+  const menu = document.getElementById('logout-menu');
+  const { user } = getStoredAuth();
+  if (user) {
+    document.getElementById('logout-name').textContent = user.name || '';
+    document.getElementById('logout-email').textContent = user.email || '';
+  }
+  menu.style.display = menu.style.display === 'none' ? 'block' : 'none';
+  // Close on outside click
+  setTimeout(() => {
+    document.addEventListener('click', function _close(e) {
+      if (!menu.contains(e.target) && !document.getElementById('user-chip').contains(e.target)) {
+        menu.style.display = 'none';
+        document.removeEventListener('click', _close);
+      }
+    });
+  }, 10);
+}
+
+async function doLogout() {
+  const { token } = getStoredAuth();
+  if (token) {
+    fetch('/api/auth/logout', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${token}` }
+    }).catch(() => {});
+  }
+  clearAuth();
+  document.getElementById('logout-menu').style.display = 'none';
+  document.getElementById('page-parent').classList.remove('active');
+  document.getElementById('page-login').classList.add('active');
+  showToast('👋 Signed out');
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ROUTE INITIALIZATION
+// ─────────────────────────────────────────────────────────────────────────────
+(function init() {
+  const path = window.location.pathname;
+
+  // Child track link — never needs auth
+  if (path.includes('/track/')) {
+    document.getElementById('page-login').classList.remove('active');
+    // Suppress Google One Tap on child-facing pages
+    if (typeof google !== 'undefined') google.accounts?.id?.cancel();
+    initChild();
+    return;
+  }
+
+  // Watcher link — never needs auth
+  if (path.includes('/watch/')) {
+    const match = path.match(/\/watch\/([A-Za-z0-9_-]+)/);
+    if (match) {
+      state.token = match[1];
+      document.getElementById('page-login').classList.remove('active');
+      document.getElementById('page-parent').classList.remove('active');
+      document.getElementById('page-watcher').classList.add('active');
+      // Suppress Google One Tap on watcher pages
+      if (typeof google !== 'undefined') google.accounts?.id?.cancel();
+      initWatcher();
+    }
+    return;
+  }
+
+  // Home page — check for stored auth
+  const { token, user } = getStoredAuth();
+  if (token && user) {
+    // Verify token is still valid in background, show parent page optimistically
+    switchToParentPage(user);
+    fetch('/api/auth/me', { headers: { 'Authorization': `Bearer ${token}` } })
+      .then(r => r.json())
+      .then(d => { if (d.user) applyUserToUI(d.user); })
+      .catch(() => {
+        // Token expired — go back to login silently
+        clearAuth();
+        document.getElementById('page-parent').classList.remove('active');
+        document.getElementById('page-login').classList.add('active');
+      });
+  } else {
+    // Show login page — user must explicitly click the Sign In button
+    document.getElementById('page-login').classList.add('active');
+  }
+})();
+</script>
+
+<!-- Logout dropdown menu -->
+<div id="logout-menu" style="display:none;position:fixed;top:70px;right:20px;background:#0f1422;border:1px solid rgba(255,255,255,0.12);border-radius:16px;padding:8px;z-index:999;min-width:200px;box-shadow:0 12px 32px rgba(0,0,0,0.6)">
+  <div id="logout-user-info" style="padding:10px 14px;border-bottom:1px solid rgba(255,255,255,0.07);margin-bottom:6px">
+    <div id="logout-name" style="font-size:14px;font-weight:600"></div>
+    <div id="logout-email" style="font-size:11px;color:#8a99b4;margin-top:2px"></div>
+  </div>
+  <button onclick="doLogout()" style="width:100%;background:transparent;border:none;color:#ff3b5c;padding:10px 14px;text-align:left;cursor:pointer;border-radius:10px;font-size:14px">🚪 Sign out</button>
+</div>
+
+</body>
+</html>

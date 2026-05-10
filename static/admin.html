@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SafeTrace Admin</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#05080f;color:#e2e8f0;font-family:'Inter',system-ui,sans-serif;min-height:100vh}
+.header{background:#0a0f1e;border-bottom:1px solid rgba(255,255,255,0.08);padding:16px 28px;display:flex;align-items:center;justify-content:space-between}
+.logo{font-size:20px;font-weight:800}span.r{color:#ff3b5c}
+.container{max-width:1100px;margin:0 auto;padding:28px 20px}
+.stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:16px;margin-bottom:32px}
+.stat-card{background:#0c1122;border:1px solid rgba(255,255,255,0.07);border-radius:20px;padding:20px}
+.stat-label{font-size:11px;text-transform:uppercase;letter-spacing:1.2px;color:#8a99b4;margin-bottom:8px}
+.stat-value{font-size:36px;font-weight:800;font-family:monospace;color:#fff}
+.stat-sub{font-size:12px;color:#8a99b4;margin-top:4px}
+.card{background:#0c1122;border:1px solid rgba(255,255,255,0.07);border-radius:20px;padding:20px;margin-bottom:24px}
+.card-title{font-size:15px;font-weight:700;margin-bottom:16px;display:flex;align-items:center;gap:8px}
+table{width:100%;border-collapse:collapse;font-size:13px}
+thead tr{border-bottom:1px solid rgba(255,255,255,0.08)}
+th{text-align:left;padding:8px 12px;font-size:11px;text-transform:uppercase;letter-spacing:1px;color:#8a99b4;font-weight:600}
+td{padding:10px 12px;border-bottom:1px solid rgba(255,255,255,0.04)}
+tr:hover td{background:rgba(255,255,255,0.02)}
+.avatar{width:30px;height:30px;border-radius:50%;object-fit:cover;vertical-align:middle;margin-right:8px}
+.avatar-placeholder{display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:50%;background:#1a2040;font-size:13px;vertical-align:middle;margin-right:8px}
+.badge{display:inline-block;padding:2px 10px;border-radius:20px;font-size:11px;font-weight:600}
+.badge-green{background:#00e3a520;color:#00e3a5}
+.badge-blue{background:#4778ff20;color:#7aa2ff}
+.pill-input{background:#0f1422;border:1px solid #2a314a;color:#e2e8f0;border-radius:40px;padding:8px 16px;font-size:13px;outline:none}
+.btn-sm{background:#ff3b5c;border:none;color:white;border-radius:40px;padding:8px 18px;font-size:13px;font-weight:600;cursor:pointer}
+#login-overlay{position:fixed;inset:0;background:#05080fee;backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;z-index:100}
+.login-box{background:#0c1122;border:1px solid rgba(255,255,255,0.1);border-radius:24px;padding:32px;width:340px;text-align:center}
+#refresh-bar{display:flex;align-items:center;gap:12px;margin-bottom:20px}
+.sort-btn{background:transparent;border:1px solid #2a314a;color:#a0b0cf;border-radius:40px;padding:5px 14px;font-size:12px;cursor:pointer}
+.sort-btn.active{background:#ff3b5c20;border-color:#ff3b5c;color:#ff3b5c}
+</style>
+</head>
+<body>
+
+<!-- Login overlay -->
+<div id="login-overlay">
+  <div class="login-box">
+    <div style="font-size:32px;margin-bottom:12px">🔐</div>
+    <div style="font-size:20px;font-weight:800;margin-bottom:6px">Admin Access</div>
+    <p style="color:#8a99b4;font-size:13px;margin-bottom:20px">Enter the admin secret to continue</p>
+    <input id="secret-input" type="password" class="pill-input" placeholder="Admin secret" style="width:100%;margin-bottom:12px" onkeydown="if(event.key==='Enter')doAdminLogin()">
+    <button class="btn-sm" style="width:100%" onclick="doAdminLogin()">Unlock Dashboard</button>
+    <div id="login-err" style="color:#ff3b5c;font-size:12px;margin-top:10px;display:none"></div>
+  </div>
+</div>
+
+<!-- Main dashboard -->
+<div id="dashboard" style="display:none">
+  <div class="header">
+    <div class="logo">Safe<span class="r">Trace</span> <span style="font-size:13px;font-weight:400;color:#8a99b4">Admin</span></div>
+    <div id="refresh-status" style="font-size:12px;color:#8a99b4"></div>
+  </div>
+  <div class="container">
+
+    <!-- Stats row -->
+    <div class="stats-grid" id="stats-grid">
+      <div class="stat-card"><div class="stat-label">Total Users</div><div class="stat-value" id="s-users">—</div></div>
+      <div class="stat-card"><div class="stat-label">New Today</div><div class="stat-value" id="s-new">—</div><div class="stat-sub">last 24h</div></div>
+      <div class="stat-card"><div class="stat-label">Active Today</div><div class="stat-value" id="s-active">—</div><div class="stat-sub">last 24h</div></div>
+      <div class="stat-card"><div class="stat-label">Live Sessions</div><div class="stat-value" id="s-live">—</div></div>
+      <div class="stat-card"><div class="stat-label">SSE Connections</div><div class="stat-value" id="s-sse">—</div></div>
+      <div class="stat-card"><div class="stat-label">Total Sessions</div><div class="stat-value" id="s-total-sess">—</div><div class="stat-sub">all time</div></div>
+    </div>
+
+    <!-- Controls -->
+    <div id="refresh-bar">
+      <span style="font-size:13px;color:#8a99b4">Sort by:</span>
+      <button class="sort-btn active" onclick="setSortBy('last_login',this)">Last Login</button>
+      <button class="sort-btn" onclick="setSortBy('created_at',this)">Joined</button>
+      <button class="sort-btn" onclick="setSortBy('session_count',this)">Sessions</button>
+      <button class="btn-sm" onclick="loadAll()" style="margin-left:auto">↺ Refresh</button>
+    </div>
+
+    <!-- Users table -->
+    <div class="card">
+      <div class="card-title">👤 Registered Users <span id="user-count-badge" class="badge badge-blue" style="margin-left:8px">—</span></div>
+      <div style="overflow-x:auto">
+        <table>
+          <thead>
+            <tr>
+              <th>User</th>
+              <th>Email</th>
+              <th>Sessions</th>
+              <th>Logins</th>
+              <th>Joined</th>
+              <th>Last Login</th>
+            </tr>
+          </thead>
+          <tbody id="users-tbody">
+            <tr><td colspan="6" style="text-align:center;color:#8a99b4;padding:32px">Loading...</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <!-- Pagination -->
+      <div id="pagination" style="display:flex;align-items:center;justify-content:flex-end;gap:10px;margin-top:16px;font-size:13px;color:#8a99b4"></div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+let adminSecret = '';
+let currentSort = 'last_login';
+let currentPage = 1;
+const PER_PAGE  = 25;
+
+function doAdminLogin() {
+  adminSecret = document.getElementById('secret-input').value.trim();
+  loadAll().then(ok => {
+    if (ok) {
+      document.getElementById('login-overlay').style.display = 'none';
+      document.getElementById('dashboard').style.display = 'block';
+    } else {
+      document.getElementById('login-err').style.display = 'block';
+      document.getElementById('login-err').textContent = '❌ Wrong secret';
+    }
+  });
+}
+
+async function loadAll() {
+  const ok = await Promise.all([loadStats(), loadUsers(currentPage)]);
+  document.getElementById('refresh-status').textContent = 'Updated ' + new Date().toLocaleTimeString();
+  return ok.every(Boolean);
+}
+
+async function loadStats() {
+  try {
+    const res = await fetch(`/api/admin/stats?secret=${adminSecret}`);
+    if (!res.ok) return false;
+    const d = await res.json();
+    document.getElementById('s-users').textContent       = d.total_users;
+    document.getElementById('s-new').textContent         = d.new_today;
+    document.getElementById('s-active').textContent      = d.active_today;
+    document.getElementById('s-live').textContent        = d.live_sessions;
+    document.getElementById('s-sse').textContent         = d.sse_connections;
+    document.getElementById('s-total-sess').textContent  = d.total_sessions_created;
+    return true;
+  } catch { return false; }
+}
+
+async function loadUsers(page = 1) {
+  try {
+    const res = await fetch(`/api/admin/users?secret=${adminSecret}&sort=${currentSort}&page=${page}&per_page=${PER_PAGE}`);
+    if (!res.ok) return false;
+    const d = await res.json();
+    document.getElementById('user-count-badge').textContent = d.total + ' users';
+    renderUsers(d.users);
+    renderPagination(d.total, page);
+    return true;
+  } catch { return false; }
+}
+
+function renderUsers(users) {
+  const tbody = document.getElementById('users-tbody');
+  if (!users.length) {
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#8a99b4;padding:32px">No users yet</td></tr>';
+    return;
+  }
+  tbody.innerHTML = users.map(u => `
+    <tr>
+      <td>
+        ${u.picture
+          ? `<img src="${u.picture}" class="avatar" onerror="this.style.display='none'">`
+          : `<span class="avatar-placeholder">${(u.name||'?')[0].toUpperCase()}</span>`}
+        <strong>${esc(u.name)}</strong>
+      </td>
+      <td style="color:#8a99b4">${esc(u.email)}</td>
+      <td><span class="badge badge-green">${u.session_count}</span></td>
+      <td style="color:#a0b0cf">${u.login_count}</td>
+      <td style="color:#8a99b4">${fmtDate(u.created_at)}</td>
+      <td style="color:#8a99b4">${fmtAgo(u.last_login)}</td>
+    </tr>
+  `).join('');
+}
+
+function renderPagination(total, page) {
+  const pages = Math.ceil(total / PER_PAGE);
+  if (pages <= 1) { document.getElementById('pagination').innerHTML = ''; return; }
+  let html = `<span>${(page-1)*PER_PAGE+1}–${Math.min(page*PER_PAGE,total)} of ${total}</span>`;
+  html += `<button class="sort-btn" onclick="gotoPage(${page-1})" ${page<=1?'disabled':''}>‹ Prev</button>`;
+  html += `<button class="sort-btn" onclick="gotoPage(${page+1})" ${page>=pages?'disabled':''}>Next ›</button>`;
+  document.getElementById('pagination').innerHTML = html;
+}
+
+function gotoPage(p) { currentPage = p; loadUsers(p); }
+function setSortBy(s, el) {
+  currentSort = s; currentPage = 1;
+  document.querySelectorAll('.sort-btn').forEach(b => b.classList.remove('active'));
+  el.classList.add('active');
+  loadUsers(1);
+}
+
+function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;'); }
+function fmtDate(ts) {
+  if (!ts) return '—';
+  return new Date(ts*1000).toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'});
+}
+function fmtAgo(ts) {
+  if (!ts) return '—';
+  const diff = Date.now()/1000 - ts;
+  if (diff < 60)  return 'just now';
+  if (diff < 3600) return Math.floor(diff/60) + 'm ago';
+  if (diff < 86400) return Math.floor(diff/3600) + 'h ago';
+  return Math.floor(diff/86400) + 'd ago';
+}
+
+// Auto-refresh every 30s when logged in
+setInterval(() => { if (adminSecret) loadAll(); }, 30000);
+</script>
+</body>
+</html>
