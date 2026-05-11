@@ -6,7 +6,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <link rel="icon" type="image/png" href="/favicon.png">
-<title>SafeTrace — One Tap Emergency Locator</title>
+<title>SafeTrack — One Tap Emergency Locator</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <!-- Google Identity Services — set your Client ID below -->
@@ -91,7 +91,7 @@ body{background:#05080f;color:#e2e8f0;font-family:'Inter',system-ui,sans-serif;o
         <li><span class="icon">🔒</span> Private — only your family sees your location</li>
       </ul>
       <div style="border-top:1px solid rgba(255,255,255,0.07);margin:20px 0"></div>
-      <p style="font-size:13px;color:#8a99b4;margin-bottom:20px">Sign in to create tracking sessions and view your history.</p>
+      <p style="font-size:13px;color:#8a99b4;margin-bottom:20px">Sign in to create tracking sessions and view Location.</p>
       <button class="google-btn" onclick="startGoogleSignIn()">
         <svg width="20" height="20" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.18 1.48-4.97 2.35-8.16 2.35-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
         Continue with Google
@@ -100,7 +100,10 @@ body{background:#05080f;color:#e2e8f0;font-family:'Inter',system-ui,sans-serif;o
       <!-- Google fallback button (shown only if One Tap is blocked by browser) -->
       <div id="google-btn-fallback" style="display:none;position:absolute;opacity:0;pointer-events:none"></div>
     </div>
-    <div style="text-align:center;font-size:12px;color:#4a5568">Developed by S Anil Kumar</div>
+    </div>
+      <div class="dev-credit" style="text-align: center;">
+    <span>Developed by S Anil Kumar</span>
+    </div>
   </div>
 </div>
 
@@ -120,7 +123,7 @@ body{background:#05080f;color:#e2e8f0;font-family:'Inter',system-ui,sans-serif;o
     <div class="glass-card">
       <div style="font-size:13px;color:#ff3b5c;font-weight:700">⚡ EMERGENCY MODE</div>
       <div style="font-size:28px;font-weight:800;margin:6px 0 4px">Instant location link</div>
-      <p style="color:#a0b0cf;font-size:15px;margin-bottom:22px">Child taps the link → live location starts immediately.</p>
+      <p style="color:#a0b0cf;font-size:15px;margin-bottom:22px">Tap the link → live location starts immediately.</p>
       <div class="stat-label" style="margin-bottom:6px">YOUR NAME</div>
       <input id="parent-name" class="input" placeholder="Your name" style="margin-bottom:8px" value="">
       <div id="parent-session-count" style="font-size:12px;color:#8a99b4;margin-bottom:20px;padding-left:8px">0 sessions created</div>
@@ -135,7 +138,7 @@ body{background:#05080f;color:#e2e8f0;font-family:'Inter',system-ui,sans-serif;o
     </div>
       <div class="dev-credit" style="text-align: center;">
     <span>Developed by S Anil Kumar</span>
-</div>
+    </div>
   </div>
 </div>
 
@@ -143,7 +146,7 @@ body{background:#05080f;color:#e2e8f0;font-family:'Inter',system-ui,sans-serif;o
 <div id="page-watcher" class="page">
   <div class="wide-container">
     <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:20px">
-      <div><div style="font-weight:800;font-size:20px">🛡️ SafeTrace</div><div style="font-size:12px">Watching: <strong id="watcher-child-name" style="color:#ff3b5c">—</strong></div></div>
+      <div><div style="font-weight:800;font-size:20px">🛡️ SafeTrack</div><div style="font-size:12px">Watching: <strong id="watcher-child-name" style="color:#ff3b5c">—</strong></div></div>
       <div class="flex-row">
         <span class="status-pill" id="watcher-status"><span class="pulse-dot"></span> LIVE</span>
         <span id="watcher-countdown" style="background:#0f1422;padding:6px 15px;border-radius:40px;font-size:13px">--:--</span>
@@ -191,11 +194,13 @@ body{background:#05080f;color:#e2e8f0;font-family:'Inter',system-ui,sans-serif;o
 <div id="page-child-one-tap" class="page">
   <div style="min-height:100vh;display:flex;justify-content:center;align-items:center;padding:20px">
     <div class="glass-card" style="width:100%;max-width:500px;text-align:center">
-      <div style="font-size:70px;margin-bottom:16px">🆘</div>
       <div style="font-size:32px;font-weight:800;margin-bottom:8px">You're safe</div>
-      <p style="color:#cbd5ff;font-size:18px;margin-bottom:28px">Your family will see your location.</p>
-      <button id="emergency-start-btn" class="btn btn-red" style="font-size:24px;padding:18px">📍 I'M HERE</button>
-      <p style="margin-top:28px;font-size:12px;opacity:0.6">🔒 Only your parent can see this</p>
+      <button id="emergency-start-btn" class="btn btn-red" style="font-size:24px;padding:18px">Tap on me</button>
+      <p style="margin-top:28px;font-size:12px;opacity:0.6">cool </p>
+    </div>
+    </div>
+      <div class="dev-credit" style="text-align: center;">
+    <span>Developed by S Anil Kumar</span>
     </div>
   </div>
 </div>
@@ -215,6 +220,10 @@ body{background:#05080f;color:#e2e8f0;font-family:'Inter',system-ui,sans-serif;o
       </div>
       <div style="font-family:monospace;font-size:11px;margin-bottom:20px" id="child-coords">—</div>
       <button class="btn-outline" onclick="stopSharing()">Stop</button>
+    </div>
+    </div>
+      <div class="dev-credit" style="text-align: center;">
+    <span>Developed by S Anil Kumar</span>
     </div>
   </div>
 </div>
